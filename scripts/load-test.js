@@ -35,7 +35,7 @@ if (process.argv[2] === '--server') {
       const durations = [];
       const submitStart = performance.now();
       const answers = await Promise.all(Array.from({ length: users }, async (_, i) => {
-        const t = performance.now(); const result = await request(route + '/answer', ip(i), { word: `想法${i % 20}` }); durations.push(performance.now() - t); return result;
+        const t = performance.now(); const result = await request(route + '/answer', ip(i), { word: `我觉得人工智能很有趣，想法${i}` }); durations.push(performance.now() - t); return result;
       }));
       const submitMs = performance.now() - submitStart;
       const successful = answers.filter(r => r.status === 200 && !r.data.duplicate).length;
@@ -43,7 +43,8 @@ if (process.argv[2] === '--server') {
       while (latest !== successful && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
       const { data } = await request(route, '192.0.2.2');
       assert.equal(data.totalAnswers, successful);
-      assert.equal(data.words.reduce((sum, w) => sum + w.count, 0), successful);
+      assert.equal(data.responses.reduce((sum, w) => sum + w.count, 0), successful);
+      if (successful) assert.equal(data.words.find(w => w.text === '人工智能').count, successful);
       assert.equal(latest, successful);
       if (!shared) { assert.equal(successful, users); assert.equal(data.participants, users); }
       durations.sort((a, b) => a - b);
