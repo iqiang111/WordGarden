@@ -15,7 +15,12 @@ test('完整课堂流程、校验、去重、实时推送、并发和重启持�
   try {
     service.server.listen(0, '127.0.0.1'); await once(service.server, 'listening');
     const base = `http://127.0.0.1:${service.server.address().port}`;
-    const post = (route, body, ip = '10.0.0.1') => fetch(base + route, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': ip }, body: JSON.stringify(body) });
+    const cookies = new Map();
+    const post = async (route, body, ip = '10.0.0.1') => {
+      const response = await fetch(base + route, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': ip, ...(cookies.has(ip) ? { Cookie: cookies.get(ip) } : {}) }, body: JSON.stringify(body) });
+      if (response.headers.get('set-cookie')) cookies.set(ip, response.headers.get('set-cookie').split(';')[0]);
+      return response;
+    };
     assert.equal((await post('/api/garden', { question: ' ' })).status, 400);
     assert.equal((await post('/api/garden', { question: '字'.repeat(101) })).status, 400);
     const created = await post('/api/garden', { question: '此刻的心情？' }); assert.equal(created.status, 201);
@@ -26,8 +31,10 @@ test('完整课堂流程、校验、去重、实时推送、并发和重启持�
     ws = new WebSocket(base.replace('http', 'ws') + `/ws/${id}`);
     const [initial] = await once(ws, 'message'); assert.equal(JSON.parse(initial).totalAnswers, 0);
     const pushed = once(ws, 'message');
-    await post(`/api/garden/${id}/answer`, { word: '开心' });
-    assert.equal(JSON.parse((await pushed)[0]).words[0].count, 1);
+    await post(`/api/garden/${id}/answer`, { word: '开心', ip: '203.0.113.99' });
+    const update = JSON.parse((await pushed)[0]);
+    assert.equal(update.words[0].count, 1);
+    assert.deepEqual(update.submissions, [{ text: '开心', ip: '10.0.0.1' }]);
     assert.equal((await (await post(`/api/garden/${id}/answer`, { word: '开心' })).json()).duplicate, true);
     await post(`/api/garden/${id}/answer`, { word: '期待' });
     const start = performance.now();
@@ -35,10 +42,14 @@ test('完整课堂流程、校验、去重、实时推送、并发和重启持�
     assert.ok(results.every(r => r.status === 200));
     const snapshot = await (await fetch(base + `/api/garden/${id}`)).json();
     assert.equal(snapshot.totalAnswers, 57); assert.equal(snapshot.participants, 56); assert.equal(snapshot.words[0].count, 56);
+    assert.equal(snapshot.submissions.length, 57);
+    assert.ok(snapshot.submissions.some(response => response.ip === '10.1.0.1' && response.text === '开心'));
+    assert.ok(snapshot.submissions.some(response => response.ip === '10.0.0.1' && response.text === '期待'));
     console.log(`55 concurrent answers: ${Math.round(performance.now() - start)}ms (local)`);
+    const participantHash = service.store.db.prepare('SELECT ip_hash FROM submissions WHERE garden_id = ? AND ip = ? LIMIT 1').get(id, '10.0.0.1').ip_hash;
     ws.terminate(); await service.close();
     service = createApp({ filename });
     assert.deepEqual(service.store.snapshot(id), snapshot);
-    assert.equal(service.store.submit(id, '开心', require('node:crypto').createHmac('sha256', fs.readFileSync(`${filename}.salt`, 'utf8')).update('10.0.0.1').digest('hex')), false);
+    assert.equal(service.store.submit(id, '开心', participantHash), false);
   } finally { ws?.terminate(); await service.close(); fs.rmSync(dir, { recursive: true, force: true }); delete process.env.TRUST_PROXY; }
 });
