@@ -45,7 +45,7 @@ if (page === 'garden') {
     if (!words.length || !window.WordCloud) return;
     // Keep the highest-frequency 80 words; the complete list remains accessible below.
     const visible = words.slice(0, 80), peak = visible[0].count;
-    WordCloud(canvas, { list: visible.map(w => [w.text, w.count]), gridSize: 7, weightFactor: count => Math.max(15, Math.min(bounds.width / 9, 72) * Math.sqrt(count / peak)), fontFamily: 'Microsoft YaHei, sans-serif', color: () => ['#202124', '#43454c', '#62656d', '#747780', '#535761'][Math.floor(Math.random() * 5)], backgroundColor: '#ffffff', rotateRatio: 0.12, minRotation: -Math.PI / 2, maxRotation: Math.PI / 2, shrinkToFit: true, drawOutOfBound: false });
+    WordCloud(canvas, { list: visible.map(w => [w.text, w.count]), gridSize: 7, weightFactor: count => Math.max(15, Math.min(bounds.width / 9, 72) * Math.sqrt(count / peak)), fontFamily: 'Microsoft YaHei, sans-serif', color: word => { const palette = ['#2563eb', '#7c3aed', '#c026d3', '#db2777', '#dc2626', '#b45309', '#15803d', '#0f766e', '#0369a1']; let hash = 0; for (const char of word) hash = (hash * 31 + char.codePointAt(0)) | 0; return palette[(hash >>> 0) % palette.length]; }, backgroundColor: '#ffffff', rotateRatio: 0.12, minRotation: -Math.PI / 2, maxRotation: Math.PI / 2, shrinkToFit: true, drawOutOfBound: false });
   }
   function update(data) {
     $('question-title').textContent = data.question; words = data.words;
