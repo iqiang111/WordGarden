@@ -1,0 +1,1 @@
+module.exports = { apps: [{ name: 'wordgarden', script: './server.js', instances: 1, exec_mode: 'fork', max_memory_restart: '400M', env: { NODE_ENV: 'production', HOST: '127.0.0.1', PORT: 3000, TRUST_PROXY: 'loopback' }, kill_timeout: 5000, time: true }] };

@@ -1,0 +1,44 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { once } = require('node:events');
+const { WebSocket } = require('ws');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { createApp } = require('../server');
+test('完整课堂流程、校验、去重、实时推送、并发和重启持久化', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wordgarden-test-'));
+  const filename = path.join(dir, 'data.db');
+  process.env.TRUST_PROXY = 'loopback';
+  let service = createApp({ filename });
+  let ws;
+  try {
+    service.server.listen(0, '127.0.0.1'); await once(service.server, 'listening');
+    const base = `http://127.0.0.1:${service.server.address().port}`;
+    const post = (route, body, ip = '10.0.0.1') => fetch(base + route, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': ip }, body: JSON.stringify(body) });
+    assert.equal((await post('/api/garden', { question: ' ' })).status, 400);
+    assert.equal((await post('/api/garden', { question: '字'.repeat(101) })).status, 400);
+    const created = await post('/api/garden', { question: '此刻的心情？' }); assert.equal(created.status, 201);
+    const { id } = await created.json(); assert.match(id, /^[\w-]{6}$/);
+    for (const route of ['/', `/garden/${id}`, `/answer/${id}`, '/lib/wordcloud2.js', '/lib/qrcode.min.js']) assert.equal((await fetch(base + route)).status, 200);
+    assert.equal((await fetch(base + '/api/garden/absent')).status, 404);
+    assert.equal((await post(`/api/garden/${id}/answer`, { word: '字'.repeat(41) })).status, 400);
+    ws = new WebSocket(base.replace('http', 'ws') + `/ws/${id}`);
+    const [initial] = await once(ws, 'message'); assert.equal(JSON.parse(initial).totalAnswers, 0);
+    const pushed = once(ws, 'message');
+    await post(`/api/garden/${id}/answer`, { word: '开心' });
+    assert.equal(JSON.parse((await pushed)[0]).words[0].count, 1);
+    assert.equal((await (await post(`/api/garden/${id}/answer`, { word: '开心' })).json()).duplicate, true);
+    await post(`/api/garden/${id}/answer`, { word: '期待' });
+    const start = performance.now();
+    const results = await Promise.all(Array.from({ length: 55 }, (_, i) => post(`/api/garden/${id}/answer`, { word: '开心' }, `10.1.0.${i + 1}`)));
+    assert.ok(results.every(r => r.status === 200));
+    const snapshot = await (await fetch(base + `/api/garden/${id}`)).json();
+    assert.equal(snapshot.totalAnswers, 57); assert.equal(snapshot.participants, 56); assert.equal(snapshot.words[0].count, 56);
+    console.log(`55 concurrent answers: ${Math.round(performance.now() - start)}ms (local)`);
+    ws.terminate(); await service.close();
+    service = createApp({ filename });
+    assert.deepEqual(service.store.snapshot(id), snapshot);
+    assert.equal(service.store.submit(id, '开心', require('node:crypto').createHmac('sha256', fs.readFileSync(`${filename}.salt`, 'utf8')).update('10.0.0.1').digest('hex')), false);
+  } finally { ws?.terminate(); await service.close(); fs.rmSync(dir, { recursive: true, force: true }); delete process.env.TRUST_PROXY; }
+});
