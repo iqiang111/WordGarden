@@ -41,6 +41,8 @@ PM2 配置启用 `TRUST_PROXY=loopback`，仅信任本地 Nginx；Nginx 覆盖�
 
 ## 备份与运维
 
+内容过滤词表位于 `config/blocked-terms.json`，修改后需重启应用。先进行 Unicode 归一化并去掉空格、标点和零宽字符，再匹配词表；命中新问题或新回答会拒绝提交。命中的历史回答整条从词云、原始回答列表和推送中隐藏，历史问题标题替换为提示文字，原数据库保留。历史回答总数与参与 IP 数仍保留原计数。该规则是词表匹配，未列出的谐音、隐喻等内容不保证识别。
+
 ```sh
 node scripts/backup.js /var/backups/wordgarden
 ```

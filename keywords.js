@@ -1,4 +1,5 @@
 const { Segment, useDefault, POSTAG } = require('segmentit');
+const { isBlocked } = require('./moderation');
 
 const segmenter = useDefault(new Segment());
 // Remove grammatical words while keeping topics, actions and emotions.
@@ -12,6 +13,7 @@ const stopwords = new Set(`的 了 着 过 是 在 有 和 与 及 或 而 但 �
   中 中的 新 新的 带来 学会 增加 帮助 获得 感到 认识 充满`.split(/\s+/));
 
 function extractKeywords(text) {
+  if (isBlocked(text)) return [];
   const normalized = text.normalize('NFKC').toLowerCase();
   const words = segmenter.doSegment(normalized)
     .filter(token => !(token.p & ignoredPOS))

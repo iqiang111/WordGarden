@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const path = require('node:path');
 const fs = require('node:fs');
 const { openDatabase } = require('./db');
+const { isBlocked } = require('./moderation');
 function createApp(options = {}) {
   const filename = options.filename || process.env.DB_PATH || path.join(__dirname, 'data/data.db');
   const store = openDatabase(filename);
@@ -29,6 +30,7 @@ function createApp(options = {}) {
   const validText = (text, max) => typeof text === 'string' && text.trim().length > 0 && [...text.trim()].length <= max && !/[\u0000-\u001f\u007f]/u.test(text.trim());
   app.post('/api/garden', createLimit, (req, res) => {
     if (!validText(req.body?.question, 100)) return res.status(400).json({ error: '请输入 1–100 字的问题' });
+    if (isBlocked(req.body.question)) return res.status(400).json({ error: '内容包含屏蔽词，请修改后再创建' });
     let id;
     do { id = crypto.randomBytes(6).toString('base64url').slice(0, 6); } while (store.snapshot(id));
     store.db.prepare('INSERT INTO gardens (id,question) VALUES (?,?)').run(id, req.body.question.trim());
@@ -43,6 +45,7 @@ function createApp(options = {}) {
   const rooms = new Map();
   app.post('/api/garden/:id/answer', requireGarden, (req, res) => {
     if (!validText(req.body?.word, 40)) return res.status(400).json({ error: '请输入 1–40 字的回答' });
+    if (isBlocked(req.body.word)) return res.status(400).json({ error: '回答包含屏蔽词，请修改后再提交' });
     const hash = crypto.createHmac('sha256', salt).update(req.ip).digest('hex');
     const accepted = store.submit(req.params.id, req.body.word.trim().normalize('NFC'), hash);
     if (accepted) {
